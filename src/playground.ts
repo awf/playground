@@ -80,6 +80,7 @@ let HIDABLE_CONTROLS = [
   ["Step button", "stepButton"],
   ["Reset button", "resetButton"],
   ["Learning rate", "learningRate"],
+  ["Optimizer", "optimizer"],
   ["Activation", "activation"],
   ["Regularization", "regularization"],
   ["Regularization rate", "regularizationRate"],
@@ -342,6 +343,14 @@ function makeGUI() {
     parametersChanged = true;
   });
   learningRate.property("value", state.learningRate);
+
+  let optimizer = d3.select("#optimizer").on("change", function() {
+    state.optimizer = +this.value;
+    state.serialize();
+    userHasInteracted();
+    parametersChanged = true;
+  });
+  optimizer.property("value", state.optimizer);
 
   let regularDropdown = d3.select("#regularizations").on("change",
       function() {
@@ -978,7 +987,7 @@ function oneStep(): boolean {
     }
   });
 
-  let GD = false;
+  let GD = state.optimizer;
 
   // Compute Jacobian
   let grads: number[][] = []
@@ -1134,8 +1143,6 @@ function oneStep(): boolean {
   }
   state.learningRate = lm_lambda;
 
-  nn.clearDerivatives(network);
-  
   // Compute the loss.
   lossTrain = getLoss(network, trainData);
   lossTest = getLoss(network, testData);
