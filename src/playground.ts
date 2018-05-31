@@ -27,6 +27,8 @@ import {
 } from "./state";
 import {Example2D, shuffle} from "./dataset";
 import {AppendingLineChart} from "./linechart";
+declare var require: any
+var numeric = require('numeric');
 
 let mainWidth;
 
@@ -179,6 +181,12 @@ function makeGUI() {
     reset();
     userHasInteracted();
     d3.select("#play-pause-button");
+    //awf
+    if (iter === 0) {
+      simulationStarted();
+    }
+    oneStep();
+
   });
 
   d3.select("#play-pause-button").on("click", function () {
@@ -905,7 +913,13 @@ function constructInput(x: number, y: number): number[] {
   return input;
 }
 
-function oneStep(): void {
+function db(s: string):void {
+  
+  d3.select("#debug-div").text(s);
+  //console.log(s);
+}
+
+function oneStep_a(): void {
   iter++;
   trainData.forEach((point, i) => {
     let input = constructInput(point.x, point.y);
@@ -915,6 +929,218 @@ function oneStep(): void {
       nn.updateWeights(network, state.learningRate, state.regularizationRate);
     }
   });
+  // Compute the loss.
+  lossTrain = getLoss(network, trainData);
+  lossTest = getLoss(network, testData);
+  updateUI();
+}
+
+function cp(v: number[]) {
+  let out : number[] = [];
+  v.forEach(val => { out.push(val) });
+  return out;
+}
+
+function slice(v: any[], start: number, len:number) {
+  return cp(v).slice(start, len);
+}
+
+function ppslice(v: any[], start: number, len:number) {
+  return numeric.prettyPrint(slice(v,start,len));
+}
+
+function pp(v) {
+  return numeric.prettyPrint(v);
+
+}
+
+
+function ones(count : number) {
+  let v : number[] = [];
+  for(var i = 0; i < count; ++i)
+    v.push(1.0);
+  return v;
+}
+
+
+function oneStep(): void {
+
+  iter++;
+
+  numeric.precision = 4;
+    
+  let ndead = 0;
+  nn.forEachNode(network, true, node => { 
+    for (let j = 0; j < node.inputLinks.length; j++) {
+      if (node.inputLinks[j].isDead) {
+        ndead++;
+        continue;
+      }
+    }
+  });
+
+  let GD = true;
+
+  // Compute Jacobian
+  let grads: number[][] = []
+  let residuals: number[] = []
+  trainData.forEach((point, i) => {
+    nn.clearDerivatives(network);
+
+    let input = constructInput(point.x, point.y);
+    let output = nn.forwardProp(network, input);
+    residuals.push(nn.Errors.SQUARE.residual(output, point.label));
+    nn.backProp(network, point.label, nn.Errors.SQUARE);
+
+    let grad: number[] = [];
+    nn.forEachNode(network, true, node => { 
+      grad.push(node.accInputDer); // dE/db
+      node.accInputDer = 0;
+      for (let j = 0; j < node.inputLinks.length; j++) {
+        let link = node.inputLinks[j];
+        grad.push(link.accErrorDer); // dE/dw
+      }
+    });
+    grads.push(grad);
+  });
+
+  //  
+  var m = grads.length;
+  var n = grads[0].length;
+  var J = grads;
+
+  // Compute error from residuals
+  let E = numeric.dot(residuals, residuals) / m;
+
+  let lm_lambda = state.learningRate;
+  let status_msg = 'iter ' + iter + ", learningRate " + state.learningRate + "\n";
+  status_msg += "ndead = " + (ndead > 0 ? "\n\nARRRGH ndead = " + ndead + "!!!!\n\n" : "0, ok") + "\n";
+
+  for (var maxtries = 0; maxtries < 20; ++maxtries) {
+
+    // Compute JTJ
+    var JT = numeric.transpose(J);
+    var JTJ = numeric.dot(JT, J);
+    var JTe = numeric.dot(JT, residuals);
+    var minusJTe = numeric.mul(-1, JTe);
+
+    // Damp JTJ
+    for(var i = 0; i < n; ++i) {
+      JTJ[i][i] += lm_lambda;
+    }
+    //db('JTJ\n' + numeric.prettyPrint(JTJ));
+
+    var update = numeric.solve(JTJ, minusJTe);
+    if (GD)
+      update = numeric.mul(1/lm_lambda, minusJTe);
+    //update = numeric.dot(JT, ones(m));
+
+    let pp = (v => ppslice(v, 0,3) + "\n" +
+                  ".." + ppslice(v,3,6) + "\n" +
+                  ".." + ppslice(v,n-4,n-1));
+
+    // Compare to nngrad
+    {
+      nn.clearDerivatives(network);
+      trainData.forEach((point, i) => {
+        let input = constructInput(point.x, point.y);
+        nn.forwardProp(network, input);
+        nn.backProp(network, point.label, nn.Errors.SQUARE);
+      });
+
+      let nngrad: number[] = [];
+      nn.forEachNode(network, true, node => { 
+        nngrad.push(node.accInputDer); // dE/db
+        for (let j = 0; j < node.inputLinks.length; j++) {
+          let link = node.inputLinks[j];
+          nngrad.push(link.accErrorDer); // dE/dw
+        }
+      });
+        
+      update = numeric.mul(-1/m, update)
+      // Gray is nngrad, black is update
+      lineChart.reset();
+      for(var i = 0; i < nngrad.length; ++i)
+        lineChart.addDataPoint([nngrad[i], update[i]]);
+
+      db(status_msg
+          + "Jacobian: " + m+"x"+n + "\n"
+          + pp(nngrad) + "\n"
+          + pp(update)
+        );
+      
+      // Just do gradient descent as before. 
+      if (true) {
+        nn.updateWeights(network, state.learningRate, state.regularizationRate);
+        return;
+      }
+    }
+  
+      
+    // Remember the original values
+    let values : number[] = [];
+    nn.forEachNode(network, true, node => { 
+      values.push(node.bias);
+      for (let j = 0; j < node.inputLinks.length; j++)
+        values.push(node.inputLinks[j].weight);
+    });
+          
+    // Apply the update
+    let count = 0;
+    nn.forEachNode(network, true, node => { 
+      node.bias += update[count++]
+      for (let j = 0; j < node.inputLinks.length; j++) {
+        let link = node.inputLinks[j];
+        link.weight += update[count++];
+      }
+    });
+
+    lossTrain = getLoss(network, trainData);
+    status_msg += (
+       "-------GD=" + GD + "\n" +
+       "Initial Loss:" + E + "\n" +
+       "New Loss = " + lossTrain + "\n" +
+       "Jacobian: " + m+"x"+n + "\n" +
+       pp(slice(grads,0,5)) +
+       "\n...\n" +
+       pp(slice(grads,m-5,m-1)) +
+       "Lambda: " + lm_lambda + "\n" + 
+       "U:\n" + pp(slice(update,0,5)) + "\n"
+      );
+
+    db(status_msg)
+
+    if (lossTrain > E) {
+      // Step was worse, undo and fix lm_lambda
+
+      // Undo update
+      let count = 0;
+      nn.forEachNode(network, true, node => { 
+        node.bias = values[count++]
+        for (let j = 0; j < node.inputLinks.length; j++)
+          node.inputLinks[j].weight = values[count++];
+      });
+
+      lm_lambda *= 10;
+
+      if (lm_lambda > 1e8) {
+        // No more improvement likely, bail out.
+        lm_lambda = 1e-3;
+        db("BAIL after " + maxtries + " tries\n" + status_msg)
+        break;
+      }
+  
+    } else {
+      // step was better, decrease lambda and break
+      lm_lambda /= 3; 
+      db("OK\n" + status_msg)
+      break;
+    }
+  }
+  state.learningRate = lm_lambda;
+
+  nn.clearDerivatives(network);
+  
   // Compute the loss.
   lossTrain = getLoss(network, trainData);
   lossTest = getLoss(network, testData);
@@ -953,7 +1179,7 @@ function reset(onStartup=false) {
   let numInputs = constructInput(0 , 0).length;
   let shape = [numInputs].concat(state.networkShape).concat([1]);
   let outputActivation = (state.problem === Problem.REGRESSION) ?
-      nn.Activations.LINEAR : nn.Activations.TANH;
+      nn.Activations.LINEAR : nn.Activations.RELU;
   network = nn.buildNetwork(shape, state.activation, outputActivation,
       state.regularization, constructInputIds(), state.initZero);
   lossTrain = getLoss(network, trainData);
@@ -1066,7 +1292,7 @@ function hideControls() {
 function generateData(firstTime = false) {
   if (!firstTime) {
     // Change the seed.
-    state.seed = Math.random().toFixed(5);
+    state.seed = "1"; // awf Math.random().toFixed(5);
     state.serialize();
     userHasInteracted();
   }
@@ -1118,3 +1344,6 @@ makeGUI();
 generateData(true);
 reset(true);
 hideControls();
+
+//awf
+oneStep();

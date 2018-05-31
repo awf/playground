@@ -73,6 +73,7 @@ export class Node {
  * An error function and its derivative.
  */
 export interface ErrorFunction {
+  residual: (output: number, target: number) => number;
   error: (output: number, target: number) => number;
   der: (output: number, target: number) => number;
 }
@@ -92,6 +93,7 @@ export interface RegularizationFunction {
 /** Built-in error functions */
 export class Errors {
   public static SQUARE: ErrorFunction = {
+    residual: (output: number, target: number) => (output - target)/Math.sqrt(2), 
     error: (output: number, target: number) =>
                0.5 * Math.pow(output - target, 2),
     der: (output: number, target: number) => output - target
@@ -279,12 +281,11 @@ export function forwardProp(network: Node[][], inputs: number[]): number {
  * derivatives with respect to each node, and each weight
  * in the network.
  */
-export function backProp(network: Node[][], target: number,
-    errorFunc: ErrorFunction): void {
+export function backProp(network: Node[][], label: number, errorFunc: ErrorFunction): void {
   // The output node is a special case. We use the user-defined error
   // function for the derivative.
   let outputNode = network[network.length - 1][0];
-  outputNode.outputDer = errorFunc.der(outputNode.output, target);
+  outputNode.outputDer = errorFunc.der(outputNode.output, label);
 
   // Go through the layers backwards.
   for (let layerIdx = network.length - 1; layerIdx >= 1; layerIdx--) {
@@ -332,17 +333,15 @@ export function backProp(network: Node[][], target: number,
  * Updates the weights of the network using the previously accumulated error
  * derivatives.
  */
-export function updateWeights(network: Node[][], learningRate: number,
-    regularizationRate: number) {
+export function updateWeights_dont_clear(network: Node[][], update: number[]) {
+  let count = 0;
   for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
     let currentLayer = network[layerIdx];
     for (let i = 0; i < currentLayer.length; i++) {
       let node = currentLayer[i];
       // Update the node's bias.
       if (node.numAccumulatedDers > 0) {
-        node.bias -= learningRate * node.accInputDer / node.numAccumulatedDers;
-        node.accInputDer = 0;
-        node.numAccumulatedDers = 0;
+        node.bias += update[count++] / node.numAccumulatedDers;
       }
       // Update the weights coming into this node.
       for (let j = 0; j < node.inputLinks.length; j++) {
@@ -350,29 +349,77 @@ export function updateWeights(network: Node[][], learningRate: number,
         if (link.isDead) {
           continue;
         }
-        let regulDer = link.regularization ?
-            link.regularization.der(link.weight) : 0;
         if (link.numAccumulatedDers > 0) {
           // Update the weight based on dE/dw.
-          link.weight = link.weight -
-              (learningRate / link.numAccumulatedDers) * link.accErrorDer;
-          // Further update the weight based on regularization.
-          let newLinkWeight = link.weight -
-              (learningRate * regularizationRate) * regulDer;
-          if (link.regularization === RegularizationFunction.L1 &&
-              link.weight * newLinkWeight < 0) {
-            // The weight crossed 0 due to the regularization term. Set it to 0.
-            link.weight = 0;
-            link.isDead = true;
-          } else {
-            link.weight = newLinkWeight;
-          }
-          link.accErrorDer = 0;
-          link.numAccumulatedDers = 0;
+          link.weight += update[count++] / link.numAccumulatedDers;
         }
       }
     }
   }
+}
+
+/**
+ * Clears the previously accumulated error derivatives.
+ */
+export function clearDerivatives(network: Node[][]) {
+  for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
+    let currentLayer = network[layerIdx];
+    for (let i = 0; i < currentLayer.length; i++) {
+      let node = currentLayer[i];
+      // Update the node's bias.
+      node.accInputDer = 0;
+      node.numAccumulatedDers = 0;
+      // Update the weights coming into this node.
+      for (let j = 0; j < node.inputLinks.length; j++) {
+        let link = node.inputLinks[j];
+        link.accErrorDer = 0;
+        link.numAccumulatedDers = 0;
+      }
+    }
+  }
+}
+
+export function updateWeights(network: Node[][], learningRate: number, 
+  regularizationRate: number) {
+for (let layerIdx = 1; layerIdx < network.length; layerIdx++) {
+  let currentLayer = network[layerIdx];
+  for (let i = 0; i < currentLayer.length; i++) {
+    let node = currentLayer[i];
+    // Update the node's bias.
+    if (node.numAccumulatedDers > 0) {
+      node.bias -= learningRate * node.accInputDer / node.numAccumulatedDers;
+      node.accInputDer = 0;
+      node.numAccumulatedDers = 0;
+    }
+    // Update the weights coming into this node.
+    for (let j = 0; j < node.inputLinks.length; j++) {
+      let link = node.inputLinks[j];
+      if (link.isDead) {
+        continue;
+      }
+      let regulDer = link.regularization ?
+          link.regularization.der(link.weight) : 0;
+      if (link.numAccumulatedDers > 0) {
+        // Update the weight based on dE/dw.
+        link.weight = link.weight -
+            (learningRate / link.numAccumulatedDers) * link.accErrorDer;
+        // Further update the weight based on regularization.
+        let newLinkWeight = link.weight -
+            (learningRate * regularizationRate) * regulDer;
+        if (link.regularization === RegularizationFunction.L1 &&
+            link.weight * newLinkWeight < 0) {
+          // The weight crossed 0 due to the regularization term. Set it to 0.
+          link.weight = 0;
+          link.isDead = true;
+        } else {
+          link.weight = newLinkWeight;
+        }
+        link.accErrorDer = 0;
+        link.numAccumulatedDers = 0;
+      }
+    }
+  }
+}
 }
 
 /** Iterates over every node in the network/ */

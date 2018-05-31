@@ -18,7 +18,7 @@
         "no-unused-variable": true,
         "no-unused-expression": true,
         "no-switch-case-fall-through": true,
-        "no-unreachable": true,
+        "no-unreachable": false,
         "one-line": [
             true,
             "check-open-brace",

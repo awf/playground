@@ -2,7 +2,9 @@
   "compilerOptions": {
     "module": "commonjs",
     "removeComments": true,
-    "preserveConstEnums": true
+    "moduleResolution": "node",
+    "preserveConstEnums": true,
+    "allowUnreachableCode": true
   },
   "exclude": [
     "node_modules",

@@ -138,11 +138,11 @@ export class State {
   regularizationRate = 0;
   showTestData = false;
   noise = 0;
-  batchSize = 10;
+  batchSize = -1;
   discretize = false;
   tutorial: string = null;
   percTrainData = 50;
-  activation = nn.Activations.TANH;
+  activation = nn.Activations.RELU;
   regularization: nn.RegularizationFunction = null;
   problem = Problem.CLASSIFICATION;
   initZero = false;
@@ -162,7 +162,7 @@ export class State {
   sinY = false;
   dataset: dataset.DataGenerator = dataset.classifyCircleData;
   regDataset: dataset.DataGenerator = dataset.regressPlane;
-  seed: string;
+  seed: string = "1";
 
   /**
    * Deserializes the state from the url hash.
@@ -232,7 +232,7 @@ export class State {
     });
     state.numHiddenLayers = state.networkShape.length;
     if (state.seed == null) {
-      state.seed = Math.random().toFixed(5);
+      state.seed = "1"; // awf Math.random().toFixed(5);
     }
     Math.seedrandom(state.seed);
     return state;

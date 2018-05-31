@@ -18,6 +18,7 @@ limitations under the License.
 body {
   font-family: "Helvetica", "Arial", sans-serif;
   background-color: #f7f7f7;
+  width: 80%;
 }
 
 h1 {
@@ -991,4 +992,14 @@ footer .links a:hover {
 /* Keep grey focus circle for non-start values */
 #main-part .mdl-slider.is-upgraded:focus:not(:active)::-webkit-slider-thumb {
   box-shadow: 0 0 0 10px rgba(0,0,0, 0.12);
+}
+
+#debug-div-holder {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  font-size: smaller;
+  background: #aaf;
+  line-height: 80%;
+  width: 19%;
 }
