@@ -989,16 +989,17 @@ function oneStep(): void {
 
     let input = constructInput(point.x, point.y);
     let output = nn.forwardProp(network, input);
-    residuals.push(nn.Errors.SQUARE.residual(output, point.label));
+    let r = nn.Errors.SQUARE.residual(output, point.label);
+    residuals.push(r);
     nn.backProp(network, point.label, nn.Errors.SQUARE);
 
     let grad: number[] = [];
     nn.forEachNode(network, true, node => { 
-      grad.push(node.accInputDer); // dE/db
+      grad.push(node.accInputDer / r); // dE/db
       node.accInputDer = 0;
       for (let j = 0; j < node.inputLinks.length; j++) {
         let link = node.inputLinks[j];
-        grad.push(link.accErrorDer); // dE/dw
+        grad.push(link.accErrorDer / r); // dE/dw
       }
     });
     grads.push(grad);
@@ -1057,26 +1058,21 @@ function oneStep(): void {
         }
       });
         
-      update = numeric.mul(-1/m, update)
-      // Gray is nngrad, black is update
-      lineChart.reset();
-      for(var i = 0; i < nngrad.length; ++i)
-        lineChart.addDataPoint([nngrad[i], update[i]]);
+      if (false) {
+        // Gray is nngrad, black is update
+        lineChart.reset();
+        let s = nngrad[0] / update[0];
+        for(var i = 0; i < nngrad.length; ++i)
+          lineChart.addDataPoint([nngrad[i], update[i] * s]);
+      }
 
       db(status_msg
           + "Jacobian: " + m+"x"+n + "\n"
           + pp(nngrad) + "\n"
           + pp(update)
         );
-      
-      // Just do gradient descent as before. 
-      if (true) {
-        nn.updateWeights(network, state.learningRate, state.regularizationRate);
-        return;
-      }
     }
   
-      
     // Remember the original values
     let values : number[] = [];
     nn.forEachNode(network, true, node => { 
