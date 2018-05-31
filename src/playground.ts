@@ -136,8 +136,7 @@ class Player {
       if (localTimerIndex < this.timerIndex) {
         return true;  // Done.
       }
-      oneStep();
-      return false;  // Not done.
+      return oneStep();
     }, 0);
   }
 }
@@ -963,7 +962,7 @@ function ones(count : number) {
 }
 
 
-function oneStep(): void {
+function oneStep(): boolean {
 
   iter++;
 
@@ -979,7 +978,7 @@ function oneStep(): void {
     }
   });
 
-  let GD = true;
+  let GD = false;
 
   // Compute Jacobian
   let grads: number[][] = []
@@ -1141,6 +1140,8 @@ function oneStep(): void {
   lossTrain = getLoss(network, trainData);
   lossTest = getLoss(network, testData);
   updateUI();
+
+  return iter == 20 || iter == 100;
 }
 
 export function getOutputWeights(network: nn.Node[][]): number[] {
